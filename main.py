@@ -44,17 +44,18 @@ for data_path, part in zip([train_path, test_path, val_path],
 del data_path, part, label, file_path
 
 # %% Create data loader
+from keras.callbacks import EarlyStopping, ModelCheckpoint
 import random
-from keras.applications.resnet50 import ResNet50
+#from keras.applications.resnet50 import ResNet50
 #model = ResNet50()
 #model.summary()
 
 params = {'dim':(8, 2500), 'n_channels':1, 'n_classes':2,
           'batch_size':64, 'shuffle':True}
 
-train_gen = DataGenerator(random.sample(partition['train'], 1000), labels, target_names=target_names, **params)
-val_gen = DataGenerator(random.sample(partition['validation'], 400), labels, target_names=target_names,**params)
-test_gen = DataGenerator(random.sample(partition['test'], 400), labels, target_names=target_names, **params)
+#train_gen = DataGenerator(random.sample(partition['train'], 500), labels, target_names=target_names, **params)
+#val_gen = DataGenerator(random.sample(partition['validation'], 200), labels, target_names=target_names,**params)
+#test_gen = DataGenerator(random.sample(partition['test'], 200), labels, target_names=target_names, **params)
 
 train_gen = DataGenerator(partition['train'], labels, target_names=target_names, **params)
 val_gen = DataGenerator(partition['validation'], labels, target_names=target_names,**params)
@@ -97,17 +98,24 @@ for n in [128, 64]:
 model.add(layers.Flatten())
 model.add(layers.Dense(2, activation="softmax"))
 
+
 optimizer = Adam(lr=0.0003)
 model.compile(loss='categorical_crossentropy',
               optimizer=optimizer,
               metrics=['accuracy'])
 
-# Train model on dataset
+es = EarlyStopping(monitor='val_loss', mode='min', patience=5)
+
+model_fp = "models/saved-model-{epoch:02d}-{val_loss:.2f}.hdf5"
+cp = ModelCheckpoint(model_fp, monitor='val_aloss', verbose=1,
+                     save_best_only=False, mode='min')
+
 hist = model.fit_generator(epochs=10,
                             generator=train_gen,
                             validation_data=val_gen,
                             use_multiprocessing=True,
-                            workers=-2)
+                            callbacks=[es, cp],
+                            workers=-1)
 #%% Plot curves
 plt.figure(figsize=(10, 14))
 plt.subplot(2, 1, 1)
