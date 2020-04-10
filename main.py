@@ -48,6 +48,12 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint
 #from keras.applications.resnet50 import ResNet50
 #model = ResNet50()
 #model.summary()
+from sklearn.metrics import roc_auc_score
+import tensorflow as tf
+import pandas as pd
+
+def auroc(y_true, y_pred):
+    return tf.py_func(roc_auc_score, (y_true, y_pred), tf.double)
 
 params = {'dim':(8, 2500), 'n_channels':1, 'n_classes':2,
           'batch_size':64, 'shuffle':True}
@@ -60,48 +66,52 @@ if use_all_date:
     test_gen = DataGenerator(partition['test'], labels, target_names=target_names, **params)
 else:
     import random
-    train_gen = DataGenerator(random.sample(partition['train'], 64*4),
+    train_gen = DataGenerator(random.sample(partition['train'], 64*6),
                               labels, target_names=target_names, **params)
     val_gen = DataGenerator(random.sample(partition['validation'], 64*3),
                             labels, target_names=target_names,**params)
     test_gen = DataGenerator(random.sample(partition['test'], 64*3),
                              labels, target_names=target_names, **params)
 
-# %% Get model and train network
-from sklearn.metrics import roc_auc_score
-import tensorflow as tf
+# Search for LR, get model and train network
+for lr in [0.001, 0.0001, 0.00001]:
+    model_path = 'models_' + str(lr) + '/'
+    os.mkdir(model_path)
+    
+    model = conv_net()
+    model.summary()
+    
+    # Define parameters
+    optimizer = Adam(lr=lr)
+    loss = 'categorical_crossentropy'
+    metrics = ['accuracy', auroc]
+    
+    send_wpp_score = True
+    epochs = 50
+    
+    # Call backs
+    model_fp = model_path + "saved-model-{epoch:02d}-{val_loss:.3f}.hdf5"
+    cp = ModelCheckpoint(model_fp, monitor='val_loss', verbose=1,
+                         save_best_only=False, mode='min')
+    es = EarlyStopping(monitor='val_loss', mode='min', patience=5)
+    cb_list = [es, cp]
+    
+    if send_wpp_score:
+        from whatsapp import NotifyWhatsAppCallback
+        cb_list.append(NotifyWhatsAppCallback())
+    
+    # Train model
+    model.compile(loss=loss, optimizer=optimizer, metrics=metrics)
+    hist = model.fit_generator(epochs=epochs,
+                                generator=train_gen,
+                                validation_data=val_gen,
+                                use_multiprocessing=False,
+                                callbacks=cb_list,
+                                workers=-1)
 
-def auroc(y_true, y_pred):
-    return tf.py_func(roc_auc_score, (y_true, y_pred), tf.double)
-
-model = conv_net()
-model.summary()
-
-# Define parameters
-optimizer = Adam(lr=0.0003)
-loss = 'categorical_crossentropy'
-metrics = ['accuracy', auroc]
-epochs = 10
-
-# Call backs
-model_fp = "models/saved-model-{epoch:02d}-{val_loss:.2f}.hdf5"
-cp = ModelCheckpoint(model_fp, monitor='val_loss', verbose=1,
-                     save_best_only=False, mode='min')
-es = EarlyStopping(monitor='val_loss', mode='min', patience=5)
-
-# Train model
-cb_list = [es, cp]
-model.compile(loss=loss, optimizer=optimizer, metrics=metrics)
-hist = model.fit_generator(epochs=epochs,
-                            generator=train_gen,
-                            validation_data=val_gen,
-                            use_multiprocessing=False,
-                            callbacks=cb_list,
-                            workers=-1)
-
+    # Save history to csv    
+    pd.DataFrame.from_dict(hist.history).round(4).to_csv(model_path + 'history.csv', index=False)
 #%% Plot curves
-
-
 plt.figure(figsize=(10, 14))
 plt.subplot(2, 1, 1)
 plt.plot(hist.history['loss'])
