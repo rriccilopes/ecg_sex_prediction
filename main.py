@@ -43,11 +43,8 @@ for data_path, part in zip([train_path, test_path, val_path],
 del data_path, part, label, file_path
 
 # %% Create data loader
-from architectures import conv_net
+from architectures import conv_net, resnet
 from keras.callbacks import EarlyStopping, ModelCheckpoint
-#from keras.applications.resnet50 import ResNet50
-#model = ResNet50()
-#model.summary()
 from sklearn.metrics import roc_auc_score
 import tensorflow as tf
 import pandas as pd
